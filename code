@@ -1,0 +1,187 @@
+##R Libraries Used
+> library(ggplot2)
+> library(broom)
+> library(margins)
+> library(tidyverse)
+> library(dplyr)
+> library(ggfortify)
+> library(mlbench)
+> library(caret)
+
+
+## Source
+> epi1 <- read.csv("/epi2018country.csv")
+> epi2 <- read.csv("/epi2018regional.csv")
+> epi12 <- cbind(epi1, epi2)
+> epi12 <- epi12[,-c(12, 14, 15)]
+> epiS <- epi12[!is.na(epi12$SDGI), ]
+
+## EDA
+> epi1 %>% ggplot(aes(x=GDPpc, fill=..count..)) + geom_histogram() +scale_fill_gradient(low="blue", high="red")
+> epi1 %>% ggplot(aes(x=log(GDPpc), fill=..count..)) + geom_histogram() +scale_fill_gradient(low="blue", high="red")
+> scatter.smooth(x=log(epi1$GDPpc), y=epi1$EPI2018Score)
+
+> epiS %>% ggplot(aes(x=SDGI, fill=..count..)) + geom_histogram() +scale_fill_gradient(low="blue", high="red")
+> scatter.smooth(x=epi1$SDGI, y=epi1$EPI2018Score)
+
+> ggboxplot(epiS, x = "Region", y = "EPI2018Score",
++    color = "Region") + theme(axis.title.x = element_blank())
+> ggboxplot(epiS, x = "Region", y = "EPI2018Score",
++    color = "Region") + theme(axis.title.x=element_blank(),
++         axis.text.x=element_blank(),
++         axis.ticks.x=element_blank())
+
+## Correlation 
+> library(corrr)
+> epinew <- select_if(epi1, is.numeric)
+> epinew <- epinew[,-1]
+> epinew %>%
++   correlate() %>% 
++   network_plot()
+
+
+> epinew %>% correlate() %>% network_plot(min_cor = .30)
+
+> correlate(epinew, method = "spearman", diagonal = 1)
+
+## New categorical variable used for classification algorithms:
+> epiScore <- epiScore[,-c(1)] 
+> epiScore <- epiS %>%
++     select(EPI2018Score) %>%
++     mutate(
++         EcoQuality = case_when(
++             EPI2018Score < 50 ~ "low",
++             EPI2018Score > 49 & EPI2018Score < 70 ~ "medium",
++             EPI2018Score > 69 ~ "high"
++             )
++         )
+>epiS <- cbind(epiS, EcoQuality = epiScore$EcoQuality)
+             
+
+## Feature Selection
+> rf_model <- randomForest(EcoQuality ~ log(GDP) + log(GDPpc) + SDGI + Region,  data = epiS, importance = TRUE)
+> rf_model$importance
+> varImpPlot(rf_model)
+
+## Regression
+> linearModRegion3 <- lm(EPI2018Score ~ SDGI + log(GDPpc) + Region, data=epiS)
+
+
+## Assumptions
+> hist(linearModRegion3$residuals)
+> ggplot2::autoplot(linearModRegion3)
+> plot(linearModRegion3, 4, id.n = 5)
+
+> vif(lm(EPI2018Score ~ SDGI + log(GDPpc) + Region, data=epiS))
+
+## Predictions and Confidence Intervals 
+First, holding SDGI and GDP per capita at their means, the probability of the EPI Score is calculated for each region:
+
+> newdata1 <- with(epiS, data.frame(SDGI = mean(SDGI), GDPpc = mean(log(GDPpc)), Region = levels(Region)))
+
+> newdata1$EPIScore <- predict(linearModRegion3, newdata = newdata1, type = "response")
+
+ 
+
+
+newdata2 <- with(epiS, data.frame(SDGI = rep(seq(from = 36, to = 85, length.out = 100), 8), GDPpc = rep(seq(from = 647, to = 118206, length.out = 100), 8), Region = factor(rep(levels(Region), each = 100))))
+
+> pred_out <- predict(object = linearModRegion3, newdata = newdata2, interval = "predict")
+> pred_df <- cbind(newdata2, pred_out)
+> pred_df <- pred_df[,-c(5)]
+> p <- ggplot(data = pred_df,
++             aes(x = GDPpc,
++                 y = EPIScore, ymin = lwr, ymax = upr,
++                 color = Region,
++                 fill = Region,
++                 group = Region))
+
+> p + geom_point(data = epiS,
++                aes(x = GDPpc, y = EPI2018Score,
++                    color = Region),
++                alpha = 0.5,
++                inherit.aes = FALSE) + 
++     geom_line() +
++     geom_ribbon(alpha = 0.2, color = FALSE) +
++     scale_x_log10(labels = scales::dollar)
+
+#Confidence Intervals for Europe & North Americana and Mid East & North Africa
+> p <- ggplot(data = subset(pred_df, Region %in% c("Europe & North America", "Mid East & North Africa")),
++             aes(x = GDPpc,
++                 y = EPIScore, ymin = lwr, ymax = upr,
++                 color = Region,
++                 fill = Region,
++                 group = Region))
+> p + geom_point(data = subset(epiS, Region %in% c("Europe & North America", "Mid East & North Africa")),
++                aes(x = GDPpc, y = EPI2018Score,
++                    color = Region),
++                alpha = 0.5,
++                inherit.aes = FALSE) + 
++     geom_line() +
++     geom_ribbon(alpha = 0.2, color = FALSE) +
++     scale_x_log10(labels = scales::dollar)
+
+> p <- ggplot(data = subset(pred_df, Region %in% c("Asia", "Eastern Europe & Eurasia")),
++             aes(x = GDPpc,
++                 y = EPIScore, ymin = lwr, ymax = upr,
++                 color = Region,
++                 fill = Region,
++                 group = Region))
+> p + geom_point(data = subset(epiS, Region %in% c("Asia", "Eastern Europe & Eurasia")),
++                aes(x = GDPpc, y = EPI2018Score,
++                    color = Region),
++                alpha = 0.5,
++                inherit.aes = FALSE) + 
++     geom_line() +
++     geom_ribbon(alpha = 0.2, color = FALSE) +
++     scale_x_log10(labels = scales::dollar)
+
+> p <- ggplot(data = subset(pred_df, Region %in% c("Pacific", "Sub-Saharan Africa")),
++             aes(x = GDPpc,
++                 y = EPIScore, ymin = lwr, ymax = upr,
++                 color = Region,
++                 fill = Region,
++                 group = Region))
+> p + geom_point(data = subset(epiS, Region %in% c("Pacific", "Sub-Saharan Africa")),
++                aes(x = GDPpc, y = EPI2018Score,
++                    color = Region),
++                alpha = 0.5,
++                inherit.aes = FALSE) + 
++     geom_line() +
++     geom_ribbon(alpha = 0.2, color = FALSE) +
++     scale_x_log10(labels = scales::dollar)
+
+
+
+
+## Algorithm Comparison
+> library(mlbench)
+> library(caret)
+
+> control <- trainControl(method="repeatedcv", number=10, repeats=3)
+> seed <- 7
+> metric <- "Accuracy"
+> set.seed(seed)
+
+> fit.lda <- train(EcoQuality~ log(GDPpc) + SDGI + Region, data=epiS, method="lda", metric=metric, preProc=c("center", "scale"), trControl=control)
+
+> fit.svmRadial <- train(EcoQuality~ log(GDPpc) + SDGI + Region, data=epiS, method="svmRadial", metric=metric, preProc=c("center", "scale"), trControl=control, fit=FALSE)
+
+> fit.knn <- train(EcoQuality~ log(GDPpc) + SDGI + Region, data=epiS, method="knn", metric=metric, preProc=c("center", "scale"), trControl=control)
+
+> fit.nb <- train(EcoQuality~ log(GDPpc) + SDGI, data=epiS, method="nb", metric=metric, trControl=control)
+
+> fit.cart <- train(EcoQuality~ log(GDPpc) + SDGI + Region, data=epiS, method="rpart", metric=metric, trControl=control)
+
+> fit.treebag <- train(EcoQuality~ log(GDPpc) + SDGI + Region, data=epiS, method="treebag", metric=metric, trControl=control)
+
+> set.seed(seed)
+> fit.rf <- train(EcoQuality~ log(GDPpc) + SDGI + Region, data=epiS, method="rf", metric=metric, trControl=control)
+
+> set.seed(seed)
+> fit.gbm <- train(EcoQuality~ log(GDPpc) + SDGI + Region, data=epiS, method="gbm", metric=metric, trControl=control, verbose=FALSE)
+
+> results <- resamples(list(lda=fit.lda,
++ 	svm=fit.svmRadial, knn=fit.knn, nb=fit.nb, cart=fit.cart, c50=fit.c50,
++ 	bagging=fit.treebag, rf=fit.rf, gbm=fit.gbm))
+> summary(results)
