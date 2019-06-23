@@ -6,6 +6,7 @@
 > library(dplyr)
 > library(ggfortify)
 > library(mlbench)
+> library(corrr)
 > library(caret)
 
 
@@ -32,7 +33,6 @@
 +         axis.ticks.x=element_blank())
 
 ## Correlation 
-> library(corrr)
 > epinew <- select_if(epi1, is.numeric)
 > epinew <- epinew[,-1]
 > epinew %>%
@@ -84,7 +84,7 @@ First, holding SDGI and GDP per capita at their means, the probability of the EP
  
 
 
-newdata2 <- with(epiS, data.frame(SDGI = rep(seq(from = 36, to = 85, length.out = 100), 8), GDPpc = rep(seq(from = 647, to = 118206, length.out = 100), 8), Region = factor(rep(levels(Region), each = 100))))
+> newdata2 <- with(epiS, data.frame(SDGI = rep(seq(from = 36, to = 85, length.out = 100), 8), GDPpc = rep(seq(from = 647, to = 118206, length.out = 100), 8), Region = factor(rep(levels(Region), each = 100))))
 
 > pred_out <- predict(object = linearModRegion3, newdata = newdata2, interval = "predict")
 > pred_df <- cbind(newdata2, pred_out)
